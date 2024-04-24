@@ -1,0 +1,176 @@
+version: '3'
+
+services:
+  minio-kpfu-data-storage:
+    image: bitnami/minio:latest
+    container_name: minio-kpfu-data-storage
+    hostname: minio-kpfu-data-storage
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      MINIO_SERVER_HOST: minio-kpfu-data-storage
+      MINIO_ROOT_USER: agona
+      MINIO_ROOT_PASSWORD: agonaagona
+      MINIO_DATA_DIR: /var/minio/data
+    volumes:
+      - ./minio-volume:/var/minio/data
+    networks:
+      - bitnami
+  
+  postgresql:
+    image: bitnami/postgresql:latest
+    hostname: postgresql
+    container_name: postgresql
+    environment:
+      - POSTGRESQL_DATABASE=airflow
+      - POSTGRESQL_USERNAME=airflow
+      - POSTGRESQL_PASSWORD=airflow
+      - BITNAMI_DEBUG=true
+    volumes:
+      - ./postgres:/bitnami/postgresql
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'airflow']
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      - airflow
+    networks:
+      - bitnami
+  
+  airflow:
+    image: bitnami/airflow:latest
+    build:
+      dockerfile: airflow/webserver/Dockerfile
+      context: .
+    hostname: airflow
+    container_name: airflow
+    environment:
+      - AIRFLOW_FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW_SECRET_KEY=a25mQ1FHTUh3MnFRSk5KMEIyVVU2YmN0VGRyYTVXY08=
+      - AIRFLOW_EXECUTOR=LocalExecutor
+      - AIRFLOW_DATABASE_NAME=airflow
+      - AIRFLOW_DATABASE_USERNAME=airflow
+      - AIRFLOW_DATABASE_PASSWORD=airflow
+      - AIRFLOW_USERNAME=airflow
+      - AIRFLOW_PASSWORD=airflow
+      - AIRFLOW_EMAIL=user@example.com
+      - AIRFLOW_LOAD_EXAMPLES=no
+      - BITNAMI_DEBUG=true
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./dags:/opt/bitnami/airflow/dags
+      - ./logs:/opt/bitnami/airflow/logs
+      - ./requirements.txt:/bitnami/python/requirements.txt
+      - /usr/local/share/ca-certificates/Yandex:/opt/bitnami/ca-certificates
+    networks:
+      - bitnami
+ 
+  airflow-scheduler:
+    image: bitnami/airflow-scheduler:latest
+    build:
+      dockerfile: airflow/scheduler/Dockerfile
+      context: .
+    hostname: airflow-scheduler
+    container_name: airflow-scheduler
+    environment:
+      - AIRFLOW_WEBSERVER_HOST=airflow
+      - AIRFLOW_FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW_SECRET_KEY=a25mQ1FHTUh3MnFRSk5KMEIyVVU2YmN0VGRyYTVXY08=
+      - AIRFLOW_EXECUTOR=LocalExecutor
+      - AIRFLOW_DATABASE_NAME=airflow
+      - AIRFLOW_DATABASE_USERNAME=airflow
+      - AIRFLOW_DATABASE_PASSWORD=airflow
+      - AIRFLOW_LOAD_EXAMPLES=no
+      - BITNAMI_DEBUG=true
+    volumes:
+      - ./dags:/opt/bitnami/airflow/dags
+      - ./logs:/opt/bitnami/airflow/logs
+      - ./requirements.txt:/bitnami/python/requirements.txt
+      - /usr/local/share/ca-certificates/Yandex:/opt/bitnami/ca-certificates
+    networks:
+      - bitnami
+
+  spark-master:
+    image: bitnami/spark:latest
+    container_name: spark-master
+    hostname: spark-master
+    command: sbin/start-master.sh
+    networks:
+      - bitnami
+    ports:
+      - 7000:7000
+      - 8000:8000
+    environment:
+        SPARK_MODE: master
+        SPARK_PUBLIC_DNS: localhost
+        SPARK_MASTER_PORT: 7000
+        SPARK_MASTER_WEBUI_PORT: 8000
+    volumes:
+      - ./spark/master:/bitnami/spark
+
+  spark-worker1:
+    image: bitnami/spark:latest
+    container_name: spark-worker1
+    hostname: spark-worker1
+    command: sbin/start-worker.sh spark://spark-master:7000
+    networks:
+      - bitnami
+    depends_on:
+      - spark-master
+    environment:
+      SPARK_MODE: worker
+      SPARK_PUBLIC_DNS: localhost
+      SPARK_WORKER_PORT: 7001
+      SPARK_WORKER_WEBUI_PORT: 8001
+      SPARK_WORKER_CORES: 2
+      SPARK_WORKER_MEMORY: 1g
+      SPARK_MASTER_URL: spark://spark-master:7000
+    volumes:
+      - ./spark/worker1:/bitnami/spark
+    ports:
+      - 7001:7001
+      - 8001:8001
+  
+  spark-worker2:
+    image: bitnami/spark:latest
+    container_name: spark-worker2
+    hostname: spark-worker2
+    command: sbin/start-worker.sh spark://spark-master:7000
+    networks:
+      - bitnami
+    depends_on:
+      - spark-master
+    environment:
+      SPARK_MODE: worker
+      SPARK_PUBLIC_DNS: localhost
+      SPARK_WORKER_PORT: 7002
+      SPARK_WORKER_WEBUI_PORT: 8002
+      SPARK_WORKER_CORES: 2
+      SPARK_WORKER_MEMORY: 1g
+      SPARK_MASTER_URL: spark://spark-master:7000
+    volumes:
+      - ./spark/worker2:/bitnami/spark
+    ports:
+      - 7002:7002
+      - 8002:8002
+  
+  kdc-clickhouse-local:
+    image: bitnami/clickhouse:latest
+    container_name: kdc-clickhouse-local
+    hostname: kdc-clickhouse-local
+    environment:
+      CLICKHOUSE_ADMIN_USER: airflow
+      CLICKHOUSE_ADMIN_PASSWORD: airflow
+    ports:
+      - '8123:8123'
+    networks:
+      - bitnami
+
+networks:
+  bitnami:
+    driver: bridge
